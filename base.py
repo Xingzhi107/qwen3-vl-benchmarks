@@ -1,5 +1,6 @@
 import torch
 import torch.nn.functional as F
+from torch.profiler import profile, ProfilerActivity, schedule
 from transformers.models.qwen3_vl.modeling_qwen3_vl import Qwen3VLVisionModel
 from transformers.models.qwen3_vl.configuration_qwen3_vl import Qwen3VLVisionConfig
 
@@ -36,25 +37,38 @@ def train():
     print(f"Starting 10 steps of training (Resolution: {H}x{W})...")
 
     # 4. 训练循环
-    for step in range(10):
-        optimizer.zero_grad()
+    # schedule: wait=6 (steps 1-6), warmup=0, active=2 (steps 7-8)
+    my_schedule = schedule(wait=6, warmup=0, active=2, repeat=1)
 
-        # 前向传播
-        output = model(pixel_values, grid_thw)
-        loss = output.last_hidden_state.sum()
+    with profile(
+        activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
+        schedule=my_schedule,
+        on_trace_ready=torch.profiler.tensorboard_trace_handler('./log/base_train'),
+        record_shapes=True,
+        with_stack=True
+    ) as prof:
+        for step in range(10):
+            optimizer.zero_grad()
 
-        # 反向传播
-        loss.backward()
+            # 前向传播
+            output = model(pixel_values, grid_thw)
+            loss = output.last_hidden_state.sum()
 
-        # 优化器步进
-        optimizer.step()
+            # 反向传播
+            loss.backward()
 
-        if device == "cuda":
-            torch.cuda.synchronize()
+            # 优化器步进
+            optimizer.step()
 
-        print(f"Step {step + 1}/10 | Loss: {loss.item():.4f}")
+            if device == "cuda":
+                torch.cuda.synchronize()
 
-    print("Training finished.")
+            prof.step() # 通知 profiler 步进
+            print(f"Step {step + 1}/10 | Loss: {loss.item():.4f}")
+
+    # 同时导出 chrome trace 以便可视化
+    prof.export_chrome_trace("qwen3_vl_base_train_steps_7_8.json")
+    print("Training finished. Trace saved to qwen3_vl_base_train_steps_7_8.json")
 
 if __name__ == "__main__":
     train()
