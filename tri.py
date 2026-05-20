@@ -1,3 +1,8 @@
+import sys
+import os
+# Ensure we use the local transformers code
+sys.path.insert(0, "/home/layz/workspace/transformers/src")
+
 import torch
 from torch.profiler import profile, ProfilerActivity, schedule, record_function
 from transformers.models.qwen3_vl.modeling_qwen3_vl import Qwen3VLModel
@@ -17,12 +22,14 @@ def train_tri():
         patch_size=14,
         temporal_patch_size=2,
         spatial_merge_size=2,
+        out_hidden_size=1024,
     )
     text_config = Qwen3VLTextConfig(
         hidden_size=1024,
         intermediate_size=4096,
         num_hidden_layers=2,
         num_attention_heads=16,
+        num_key_value_heads=16,
         vocab_size=1000,
     )
     config = Qwen3VLConfig(
